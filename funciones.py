@@ -9,7 +9,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch.optim as optim
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-
+import ast
+import itertools
+from statsmodels.tsa.stattools import kpss, adfuller
+from statsmodels.stats.diagnostic import het_arch
 def train_model(model, 
                 train_dataloader=None,
                 val_dataloader=None,
@@ -159,3 +162,150 @@ def grafico_pasos(pasos, mses):
     plt.gca().invert_xaxis()
     plt.xticks(pasos)
     plt.show()
+
+def cartera_simple(df_precios, risk_free_rate=0.0):
+    returns = df_precios.pct_change().dropna()
+    cov_anual = returns.cov() * 252
+    resultados = []
+    combinaciones = list(itertools.combinations(df_precios.columns, 3))
+    for activos in combinaciones:
+        pesos = np.array([1/3, 1/3, 1/3])
+        sub_returns = returns[list(activos)]
+        port_daily_returns = sub_returns @ pesos
+        rent_diaria_media = port_daily_returns.mean()
+        rentabilidad_anualizada = (1 + rent_diaria_media) ** 252 - 1
+        sub_cov = cov_anual.loc[list(activos), list(activos)]
+        volatilidad_anualizada = np.sqrt(np.dot(pesos, np.dot(sub_cov, pesos.T)))
+        rentabilidad_acumulada = (1 + port_daily_returns).prod() - 1
+        sharpe = (rentabilidad_anualizada - risk_free_rate) / volatilidad_anualizada if volatilidad_anualizada > 0 else np.nan
+        cumulative = (1 + port_daily_returns).cumprod()
+        rolling_max = cumulative.cummax()
+        drawdown = (cumulative - rolling_max) / rolling_max
+        max_dd = drawdown.min()
+        resultados.append({
+            'cartera': activos,
+            'rentabilidad_anualizada': float(rentabilidad_anualizada),
+            'volatilidad_anualizada': float(volatilidad_anualizada),
+            'rentabilidad_acumulada': float(rentabilidad_acumulada),
+            'sharpe': float(sharpe),
+            'drawdown_max': float(max_dd)})
+    df_resultados = pd.DataFrame(resultados)
+    df_resultados = df_resultados.sort_values(
+        by=['rentabilidad_anualizada', 'volatilidad_anualizada'],
+        ascending=[False, False]).reset_index(drop=True)
+    return df_resultados
+
+def evaluar_carteras_desde_top(df_precios, df_top, risk_free_rate=0.01):
+    if 'cartera' not in df_top.columns:
+        raise ValueError("df_top debe contener la columna 'cartera' con las carteras a evaluar")
+    carteras = []
+    for v in df_top['cartera']:
+        if isinstance(v, (list, tuple, set)):
+            carteras.append(tuple(map(str, v)))
+        elif isinstance(v, str):
+            parsed = None
+            try:
+                parsed = ast.literal_eval(v)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, (list, tuple, set)):
+                carteras.append(tuple(map(str, parsed)))
+            else:
+                parts = [p.strip() for p in v.split(',') if p.strip()]
+                if len(parts) > 1:
+                    carteras.append(tuple(map(str, parts)))
+                else:
+                    carteras.append((str(v),))
+        else:
+            try:
+                carteras.append(tuple(map(str, list(v))))
+            except Exception:
+                carteras.append((str(v),))
+    available = set(df_precios.columns.astype(str))
+    carteras_validas = []
+    carteras_descartadas = []
+    for c in carteras:
+        if all(sym in available for sym in c):
+            carteras_validas.append(c)
+        else:
+            carteras_descartadas.append(c)
+    if len(carteras_validas) == 0:
+        raise ValueError("Ninguna cartera válida: comprueba que los símbolos de 'cartera' estén en df_precios.columns")
+    returns = df_precios.pct_change().dropna()
+    cov_anual = returns.cov() * 252
+    corr_matrix = returns.corr()
+    resultados = []
+    for activos in carteras_validas:
+        n = len(activos)
+        pesos = np.array([1.0/n] * n)
+        sub_returns = returns[list(activos)]
+        port_daily_returns = sub_returns @ pesos
+        rent_diaria_media = port_daily_returns.mean()
+        rentabilidad_anualizada = (1 + rent_diaria_media) ** 252 - 1
+        sub_cov = cov_anual.loc[list(activos), list(activos)]
+        volatilidad_anualizada = np.sqrt(np.dot(pesos, np.dot(sub_cov, pesos.T)))
+        rentabilidad_acumulada = (1 + port_daily_returns).prod() - 1
+        sharpe = (rentabilidad_anualizada - risk_free_rate) / volatilidad_anualizada if volatilidad_anualizada > 0 else np.nan
+        cumulative = (1 + port_daily_returns).cumprod()
+        rolling_max = cumulative.cummax()
+        drawdown = (cumulative - rolling_max) / rolling_max
+        max_dd = drawdown.min()
+        if n == 3:
+            c_ab = corr_matrix.loc[activos[0], activos[1]]
+            c_ac = corr_matrix.loc[activos[0], activos[2]]
+            c_bc = corr_matrix.loc[activos[1], activos[2]]
+            corrs = [c_ab, c_ac, c_bc]
+            corr_alta = max(corrs)
+            idx_alta = corrs.index(corr_alta)
+            pares = [(activos[0], activos[1]), (activos[0], activos[2]), (activos[1], activos[2])]
+            par_alta = pares[idx_alta]
+            tercero = list(set(activos) - set(par_alta))[0]
+            corr_tercero_1 = corr_matrix.loc[tercero, par_alta[0]]
+            corr_tercero_2 = corr_matrix.loc[tercero, par_alta[1]]
+            corr_media_tercero = float(np.mean([corr_tercero_1, corr_tercero_2]))
+            score_corr = float(corr_alta - corr_media_tercero)
+        else:
+            corr_alta = np.nan
+            corr_media_tercero = np.nan
+            score_corr = np.nan
+        resultados.append({
+            'cartera': activos,
+            'rentabilidad_anualizada': float(rentabilidad_anualizada),
+            'volatilidad_anualizada': float(volatilidad_anualizada),
+            'rentabilidad_acumulada': float(rentabilidad_acumulada),
+            'sharpe': float(sharpe) if not np.isnan(sharpe) else np.nan,
+            'drawdown_max': float(max_dd),
+            'corr_mas_alta': float(corr_alta) if not np.isnan(corr_alta) else np.nan,
+            'corr_media_tercero': float(corr_media_tercero) if not np.isnan(corr_media_tercero) else np.nan,
+            'score_corr': float(score_corr) if not np.isnan(score_corr) else np.nan})
+    df_resultados = pd.DataFrame(resultados)
+    df_resultados = df_resultados.sort_values(by=['score_corr', 'rentabilidad_anualizada'], ascending=[False, False]).reset_index(drop=True)
+    print(f"Carteras evaluadas: {len(carteras_validas)}  |  descartadas por símbolos faltantes: {len(carteras_descartadas)}")
+    if carteras_descartadas:
+        print("Ejemplos descartados:", carteras_descartadas[:5])
+    return df_resultados
+def test_estacionario(residuo):
+    residuo=residuo.dropna()
+    adf_test = adfuller(residuo, autolag='AIC')
+    p_adf = adf_test[1]
+    kpss_test = kpss(residuo, nlags="auto")
+    p_kpss = kpss_test[1]
+    arch_test = het_arch(residuo)
+    p_arch = arch_test[1]
+    if p_adf < 0.05 and p_kpss > 0.05:
+        estacionario = "La serie es ESTACIONARIA"
+    else:
+        estacionario = "La serie NO es estacionaria"
+
+    if p_arch < 0.05:
+        heterocedasticidad = "Existe HETEROCEDASTICIDAD (varianza no constante)"
+    else:
+        heterocedasticidad = "No hay heterocedasticidad (varianza constante)"
+    resultados = {
+        'ADF_pvalue': p_adf,
+        'KPSS_pvalue': p_kpss,
+        'ARCH_pvalue': p_arch,
+        'Conclusión_estacionariedad': estacionario,
+        'Conclusión_heterocedasticidad': heterocedasticidad
+    }
+    return resultados

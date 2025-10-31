@@ -134,7 +134,7 @@ def plot_history(history:dict, plot_list=[], scale="linear", palette = None):
     plt.legend(fontsize=30)
     plt.show()
 
-def visualize_true_vs_pred_regression(y_true,y_pred):
+def visualize_true_vs_pred_regression(y_true,y_pred, model = ''):
 
     mae = mean_absolute_error(y_true, y_pred)
     mse = mean_squared_error(y_true, y_pred)
@@ -147,7 +147,7 @@ def visualize_true_vs_pred_regression(y_true,y_pred):
     plt.scatter(y_true,y_pred)
     plt.xlabel(f"Real value",fontsize=20)
     plt.ylabel(f"Prediction",fontsize=20)
-    plt.title(f"Real vs Predicted (Test). MAE={mae:.2e}, MSE={mse:.2e}, R2={r2:.2e}",fontdict={"fontsize":20})
+    plt.title(f"{model} Real vs Predicted (Test). MAE={mae:.2e}, MSE={mse:.2e}, R2={r2:.2e}",fontdict={"fontsize":20})
     plt.show()
 
 def grafico_pasos(pasos, mses):

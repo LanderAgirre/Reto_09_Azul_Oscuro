@@ -5,14 +5,13 @@ Este repositorio contiene el código, datos y notebooks usados para el reto de s
 IMPORTANTE ⚠️ — Algunos pasos son computacionalmente muy costosos (Montecarlo, MLFLOW). Por defecto debes ejecutar SOLO las secciones 1, 2 y 4 (preprocesamiento, selección de cartera y pasos de Data Science ligeros). Las secciones pesadas están documentadas pero marcadas para ejecución opcional y bajo tu responsabilidad.
 
 ## Estructura principal
-
-- `Datos/` - Carpeta con datos originales y transformados.
-- `Graficos/` - Salida de gráficos generados por los notebooks.
-- `Resultados/` - CSVs y artefactos resultantes (carteras, métricas, etc.).
 - `1.Procesamiento.ipynb` - Notebook principal de preprocesamiento y cálculo de métricas (splits, imputación, ajuste de series, visualizaciones).
 - `2.Selección_Cartera.ipynb` - Notebook de generación y evaluación de carteras (métricas, correlación, selección top390, visualizaciones).
+- `3.Montecarlo.ipynb` - NO EJECUTAR POR COSTE COMPUTACIONAL. 
+- `4.DataScience.ipynb` - Esta sección agrupa los pasos de análisis de series temporales, visualización y modelado no costoso.
+- `MLFLOW.ipynb` - NO EJECUTAR POR COSTE COMPUTACIONAL
+- `5.Red.ipynb` - Experimentos de predicción de series temporales
 - `Funciones.py` - Módulos auxiliares reutilizables.
-
 ---
 
 ## 1. Preprocesamiento
